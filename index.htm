@@ -1,0 +1,335 @@
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atrapa el 10: Análisis Matemático</title>
+    <!-- Tailwind CSS para los estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React y ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel para compilar JSX en el navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { background-color: #1e293b; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .trapdoor { transition: all 0.5s ease; transform-origin: top; }
+        .trapdoor.open { transform: rotateX(-90deg); opacity: 0; pointer-events: none; }
+        .block-stack { transition: all 0.5s ease; }
+        .block-stack.fall { transform: translateY(200px); opacity: 0; }
+        .correct-glow { box-shadow: 0 0 20px 5px rgba(34, 197, 94, 0.6); border-color: #22c55e !important; }
+        
+        /* Patrón de fondo sutil */
+        .bg-pattern {
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body class="bg-pattern min-h-screen flex flex-col">
+
+    <div id="root" class="flex-grow flex flex-col"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const GAME_QUESTIONS = [
+            {
+                text: "NIVEL 1: Geométricamente, la derivada de una función en un punto representa...",
+                options: ["El área bajo la curva", "La pendiente de la recta tangente", "El corte con el eje X", "El límite al infinito"],
+                correctIndex: 1
+            },
+            {
+                text: "NIVEL 2: Si la primera derivada f'(x) es positiva en todo un intervalo, la función en ese tramo es...",
+                options: ["Decreciente", "Constante", "Creciente", "Cóncava"],
+                correctIndex: 2
+            },
+            {
+                text: "NIVEL 3: Si una función tiene forma de '∩' (cóncava), ¿qué sabemos de su segunda derivada f''(x)?",
+                options: ["Es positiva (> 0)", "Es negativa (< 0)", "Es siempre cero (= 0)", "No existe"],
+                correctIndex: 1
+            },
+            {
+                text: "NIVEL 4: En un problema de optimización, el primer paso fundamental para encontrar un extremo relativo es...",
+                options: ["Igualar f(x) a cero", "Igualar f''(x) a cero", "Calcular asíntotas", "Igualar f'(x) a cero"],
+                correctIndex: 3
+            },
+            {
+                text: "NIVEL 5: Si en un punto crítico f'(c) = 0 y al comprobar la segunda derivada da un valor positivo (f''(c) > 0), ahí tenemos un:",
+                options: ["Mínimo relativo", "Máximo relativo", "Punto de inflexión"],
+                correctIndex: 0
+            },
+            {
+                text: "NIVEL 6: Para confirmar que existe un punto de inflexión en x=a, no basta con que f''(a)=0, también es obligatorio que...",
+                options: ["Se anule la 1ª derivada", "f''(x) cambie de signo", "f'(x) cambie de signo"],
+                correctIndex: 1
+            },
+            {
+                text: "LA GRAN FINAL: Según la Regla de Barrow, para calcular una integral definida entre los límites 'a' (inferior) y 'b' (superior), la fórmula es...",
+                options: ["F(b) − F(a)", "F(a) − F(b)"],
+                correctIndex: 0
+            }
+        ];
+
+        const STARTING_BLOCKS = 40;
+        const POINTS_PER_BLOCK = 0.25;
+
+        function App() {
+            const [gameState, setGameState] = useState('start'); // start, betting, revealing, gameover, victory
+            const [currentQIndex, setCurrentQIndex] = useState(0);
+            const [totalBlocks, setTotalBlocks] = useState(STARTING_BLOCKS);
+            const [bets, setBets] = useState([]);
+            const [revealed, setRevealed] = useState(false);
+
+            const currentQuestion = GAME_QUESTIONS[currentQIndex];
+
+            // Inicializar las apuestas a 0 cada vez que cambia la pregunta
+            useEffect(() => {
+                if (currentQuestion) {
+                    setBets(new Array(currentQuestion.options.length).fill(0));
+                    setRevealed(false);
+                }
+            }, [currentQIndex, currentQuestion]);
+
+            const blocksPlaced = bets.reduce((a, b) => a + b, 0);
+            const blocksRemaining = totalBlocks - blocksPlaced;
+            
+            // Regla: Siempre debe haber al menos una opción con 0 bloques
+            const hasEmptyOption = bets.some(bet => bet === 0);
+            const canConfirm = blocksRemaining === 0 && hasEmptyOption;
+
+            const handleBetChange = (index, delta) => {
+                if (gameState !== 'betting') return;
+                
+                const newBets = [...bets];
+                const newBetValue = newBets[index] + delta;
+
+                // Validaciones
+                if (newBetValue < 0) return; // No apuestas negativas
+                if (delta > 0 && blocksRemaining < delta) return; // No apostar más de lo que se tiene
+
+                newBets[index] = newBetValue;
+                setBets(newBets);
+            };
+
+            const handleMaxBet = (index) => {
+                if (gameState !== 'betting') return;
+                
+                const newBets = [...bets];
+                // Retirar todos los bloques y ponerlos en esta opción
+                const allBlocks = newBets.reduce((a, b) => a + b, 0) + blocksRemaining;
+                newBets.fill(0);
+                newBets[index] = allBlocks;
+                setBets(newBets);
+            };
+
+            const confirmBets = () => {
+                if (!canConfirm) return;
+                
+                setGameState('revealing');
+                setRevealed(true);
+
+                // Esperar animación de trampillas
+                setTimeout(() => {
+                    const correctBet = bets[currentQuestion.correctIndex];
+                    
+                    if (correctBet === 0) {
+                        setGameState('gameover');
+                    } else {
+                        setTotalBlocks(correctBet);
+                        setTimeout(() => {
+                            if (currentQIndex === GAME_QUESTIONS.length - 1) {
+                                setGameState('victory');
+                            } else {
+                                setCurrentQIndex(prev => prev + 1);
+                                setGameState('betting');
+                            }
+                        }, 2500); // Tiempo de pausa antes de la siguiente pregunta
+                    }
+                }, 2000); // Tiempo que tardan en abrirse las trampillas
+            };
+
+            const restartGame = () => {
+                setTotalBlocks(STARTING_BLOCKS);
+                setCurrentQIndex(0);
+                setGameState('betting');
+            };
+
+            // Pantalla de Inicio
+            if (gameState === 'start') {
+                return (
+                    <div className="flex flex-col items-center justify-center h-screen text-center p-8">
+                        <div className="bg-slate-800 p-10 rounded-3xl shadow-2xl max-w-2xl border-4 border-blue-500">
+                            <h1 className="text-6xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400 drop-shadow-lg">
+                                ATRAPA EL 10
+                            </h1>
+                            <h2 className="text-2xl font-bold mb-4 text-slate-300">Especial Análisis Matemático</h2>
+                            <p className="text-xl mb-8">
+                                Empiezas con <strong>{STARTING_BLOCKS} bloques</strong>. Cada bloque vale <strong>{POINTS_PER_BLOCK} puntos</strong> (Nota máxima: 10).<br/><br/>
+                                Distribuye tus bloques en las respuestas que creas correctas. ¡Pero cuidado! <strong>Siempre debes dejar una trampilla vacía.</strong> Los bloques en respuestas incorrectas caerán al vacío.
+                            </p>
+                            <button 
+                                onClick={() => setGameState('betting')}
+                                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold py-4 px-10 rounded-full text-2xl transform transition hover:scale-105 shadow-lg"
+                            >
+                                ¡Comenzar el Examen!
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Pantalla de Game Over
+            if (gameState === 'gameover') {
+                return (
+                    <div className="flex flex-col items-center justify-center h-screen text-center p-8">
+                        <div className="bg-red-900 p-10 rounded-3xl shadow-2xl max-w-xl border-4 border-red-500">
+                            <h1 className="text-6xl font-black mb-6 text-red-300">¡SUSPENSO!</h1>
+                            <p className="text-2xl mb-8">Has perdido todos tus bloques en la pregunta {currentQIndex + 1}.</p>
+                            <p className="text-xl mb-8 italic text-slate-300">La respuesta correcta era: <br/><strong className="text-white">{currentQuestion.options[currentQuestion.correctIndex]}</strong></p>
+                            <button 
+                                onClick={restartGame}
+                                className="bg-white text-red-900 font-bold py-3 px-8 rounded-full text-xl hover:bg-slate-200 transition shadow-lg"
+                            >
+                                Volver a Intentarlo
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Pantalla de Victoria
+            if (gameState === 'victory') {
+                const grade = totalBlocks * POINTS_PER_BLOCK;
+                let message = "";
+                if (grade === 10) message = "¡MATRÍCULA DE HONOR! Eres un genio del cálculo.";
+                else if (grade >= 5) message = "¡ENHORABUENA! Has salvado el aprobado.";
+                else message = "Bueno... al menos has llegado al final, pero toca repasar.";
+
+                return (
+                    <div className="flex flex-col items-center justify-center h-screen text-center p-8">
+                        <div className="bg-emerald-900 p-10 rounded-3xl shadow-2xl max-w-xl border-4 border-yellow-400">
+                            <h1 className="text-6xl font-black mb-6 text-yellow-400">¡RETO COMPLETADO!</h1>
+                            <p className="text-3xl mb-4">Tu nota final es:</p>
+                            <div className="text-8xl font-black text-white mb-6 drop-shadow-lg">{grade.toFixed(2)}</div>
+                            <p className="text-xl mb-8 font-bold text-emerald-200">{message}</p>
+                            <button 
+                                onClick={restartGame}
+                                className="bg-yellow-400 text-emerald-900 font-bold py-3 px-8 rounded-full text-xl hover:bg-yellow-300 transition shadow-lg"
+                            >
+                                Jugar Otra Vez
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Pantalla Principal de Juego
+            return (
+                <div className="flex flex-col h-screen max-w-6xl mx-auto w-full p-4">
+                    {/* Cabecera */}
+                    <div className="flex justify-between items-center bg-slate-800 p-4 rounded-2xl border-2 border-slate-600 shadow-lg mb-6">
+                        <div className="text-center">
+                            <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">Pregunta</p>
+                            <p className="text-3xl font-black text-blue-400">{currentQIndex + 1} / {GAME_QUESTIONS.length}</p>
+                        </div>
+                        <div className="text-center flex-grow">
+                            <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">Nota Asegurada</p>
+                            <p className="text-5xl font-black text-white">{(totalBlocks * POINTS_PER_BLOCK).toFixed(2)}</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-slate-400 font-bold uppercase tracking-wider text-sm">Bloques Disponibles</p>
+                            <div className={`text-4xl font-black transition-colors duration-300 ${blocksRemaining === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                {blocksRemaining}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Pregunta */}
+                    <div className="bg-blue-600 p-8 rounded-3xl shadow-2xl mb-8 border-4 border-blue-400 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 opacity-10 text-9xl font-serif mr-4 -mt-4">?</div>
+                        <h2 className="text-3xl md:text-4xl font-bold text-center leading-snug relative z-10">
+                            {currentQuestion.text}
+                        </h2>
+                    </div>
+
+                    {/* Trampillas / Opciones */}
+                    <div className={`flex-grow grid gap-6 ${currentQuestion.options.length === 4 ? 'grid-cols-2 md:grid-cols-4' : currentQuestion.options.length === 3 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
+                        {currentQuestion.options.map((opt, idx) => {
+                            const isCorrect = idx === currentQuestion.correctIndex;
+                            const isRevealed = revealed;
+                            const isOpen = isRevealed && !isCorrect;
+                            
+                            return (
+                                <div key={idx} className="flex flex-col relative perspective-1000">
+                                    {/* La Trampilla en sí */}
+                                    <div className={`trapdoor flex-grow flex flex-col items-center justify-between p-4 rounded-2xl border-4 shadow-xl z-20 
+                                        ${isRevealed && isCorrect ? 'bg-green-600 border-green-400 correct-glow' : 'bg-slate-700 border-slate-500'}
+                                        ${isOpen ? 'open' : ''}
+                                    `}>
+                                        <h3 className="text-xl font-bold text-center mb-4 min-h-[60px] flex items-center">{opt}</h3>
+                                        
+                                        {/* Zona de Apuesta */}
+                                        <div className="w-full bg-slate-800 rounded-xl p-3 flex flex-col items-center">
+                                            <span className="text-4xl font-black mb-2 text-yellow-400">{bets[idx]}</span>
+                                            
+                                            <div className="grid grid-cols-2 gap-2 w-full mb-2">
+                                                <button disabled={gameState !== 'betting' || bets[idx] === 0} onClick={() => handleBetChange(idx, -5)} className="bg-red-500 hover:bg-red-400 disabled:opacity-50 rounded font-bold py-1">-5</button>
+                                                <button disabled={gameState !== 'betting' || blocksRemaining < 5} onClick={() => handleBetChange(idx, 5)} className="bg-green-500 hover:bg-green-400 disabled:opacity-50 rounded font-bold py-1">+5</button>
+                                                <button disabled={gameState !== 'betting' || bets[idx] === 0} onClick={() => handleBetChange(idx, -1)} className="bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded font-bold py-1">-1</button>
+                                                <button disabled={gameState !== 'betting' || blocksRemaining < 1} onClick={() => handleBetChange(idx, 1)} className="bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded font-bold py-1">+1</button>
+                                            </div>
+                                            <button disabled={gameState !== 'betting' || (blocksRemaining === 0 && bets[idx] === totalBlocks)} onClick={() => handleMaxBet(idx)} className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 disabled:opacity-50 rounded font-bold py-2 uppercase text-sm tracking-wider">
+                                                Todo Aquí
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Visualización de bloques cayendo (solo visible cuando se abre la trampilla incorrecta) */}
+                                    <div className={`absolute bottom-0 w-full flex justify-center z-10 block-stack ${isOpen ? 'fall' : 'opacity-0'}`}>
+                                        <div className="bg-yellow-500 w-3/4 h-16 rounded-lg border-2 border-yellow-300 flex items-center justify-center font-black text-slate-900 text-2xl shadow-lg">
+                                            {bets[idx]} bloques perdidos
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Fondo visible cuando la trampilla se abre (el foso) */}
+                                    <div className="absolute inset-0 bg-red-900 rounded-2xl border-4 border-red-950 z-0 flex items-center justify-center opacity-0 transition-opacity duration-1000" style={{ opacity: isOpen ? 1 : 0 }}>
+                                        <span className="text-red-500 font-black text-6xl opacity-50">X</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Botón de Confirmar */}
+                    <div className="mt-8 flex justify-center mb-8">
+                        <button 
+                            onClick={confirmBets}
+                            disabled={!canConfirm || gameState !== 'betting'}
+                            className={`py-4 px-12 rounded-full text-2xl font-black uppercase tracking-widest transition-all duration-300 shadow-2xl
+                                ${(!canConfirm || gameState !== 'betting') 
+                                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed' 
+                                    : 'bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-300 hover:to-yellow-500 text-slate-900 transform hover:scale-105 hover:-translate-y-1'
+                                }
+                            `}
+                        >
+                            {gameState === 'revealing' ? '¡Trampillas Abriéndose!' : 'Confirmar y Abrir Trampillas'}
+                        </button>
+                    </div>
+                    
+                    {/* Alertas para el usuario */}
+                    {gameState === 'betting' && !canConfirm && blocksRemaining === 0 && !hasEmptyOption && (
+                        <div className="text-center text-red-400 font-bold mb-4 animate-pulse">
+                            ¡REGLA DE ORO! Tienes que dejar obligatoriamente al menos una opción vacía (con 0 bloques).
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
